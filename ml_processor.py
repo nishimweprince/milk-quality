@@ -97,17 +97,53 @@ class MilkQualityML:
         
         quality_categories = []
         actions = []
-        for scc in scc_values:
-            if scc <= 200_000:
-                label = 'Negative'
-            elif scc <= 400_000:
-                label = 'Trace'
-            elif scc <= 1_200_000:
-                label = 'Weak_Positive'
-            elif scc <= 5_000_000:
-                label = 'Distinct_Positive'
+        
+        for i in range(n_samples):
+            scc = scc_values[i]
+            ph = ph_values[i]
+            turb = turbidity[i]
+            ec = ec_values[i]
+            
+            if np.random.random() < 0.2:
+                # Completely random assignment regardless of parameters
+                label = np.random.choice(['Negative', 'Trace', 'Weak_Positive', 'Distinct_Positive', 'Definite_Positive'])
             else:
-                label = 'Definite_Positive'
+                # Base category on SCC but with high probability of being in adjacent categories
+                if scc <= 200_000:
+                    if (ph < 6.0 or ph > 7.0 or turb > 5.0 or ec > 5.5) and np.random.random() < 0.3:
+                        label = 'Trace'
+                    else:
+                        label = 'Negative'
+                elif scc <= 400_000:
+                    rand = np.random.random()
+                    if rand < 0.3:
+                        label = 'Negative'
+                    elif rand < 0.6:
+                        label = 'Weak_Positive'
+                    else:
+                        label = 'Trace'
+                elif scc <= 1_200_000:
+                    rand = np.random.random()
+                    if rand < 0.3:
+                        label = 'Trace'
+                    elif rand < 0.6:
+                        label = 'Distinct_Positive'
+                    else:
+                        label = 'Weak_Positive'
+                elif scc <= 5_000_000:
+                    rand = np.random.random()
+                    if rand < 0.3:
+                        label = 'Weak_Positive'
+                    elif rand < 0.6:
+                        label = 'Definite_Positive'
+                    else:
+                        label = 'Distinct_Positive'
+                else:
+                    if np.random.random() < 0.3:
+                        label = 'Distinct_Positive'
+                    else:
+                        label = 'Definite_Positive'
+                    
             quality_categories.append(label)
             actions.append(action_mapping[label])
         
@@ -223,4 +259,4 @@ class MilkQualityML:
         }
 
 # Create a singleton instance
-ml_processor = MilkQualityML()        
+ml_processor = MilkQualityML()            
