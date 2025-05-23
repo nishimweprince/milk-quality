@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Milk Quality Monitoring</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+            --light: #f8f9fa;
+            --dark: #212529;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 20px;
+            color: var(--dark);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .demo-badge {
+            background-color: var(--warning);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: 500;
+            display: none;  /* Hidden by default */
+        }
+        
+        h1 {
+            color: var(--primary);
+            margin: 0;
+            font-weight: 600;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        
+        .card-header {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .data-table th, .data-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .data-table th {
+            background-color: #f8f9fa;
+            font-weight: 500;
+        }
+        
+        .data-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .status-value {
+            font-weight: 600;
+        }
+        
+        .status-good {
+            color: var(--success);
+        }
+        
+        .status-warning {
+            color: var(--warning);
+        }
+        
+        .status-bad {
+            color: var(--danger);
+        }
+        
+        .grid-col-12 {
+            grid-column: span 12;
+        }
+        
+        @media (max-width: 1200px) {
+            .grid-col-4, .grid-col-8 {
+                grid-column: span 12;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Milk Quality Monitoring Dashboard</h1>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div id="lastUpdated"></div>
+                <div id="demoBadge" class="demo-badge">Demo Mode</div>
+            </div>
+        </header>
+        
+        <div class="dashboard-grid">
+            <!-- Current Values Card -->
+            <div class="card grid-col-12">
+                <div class="card-header">Current Sensor Values</div>
+                <div id="currentValues">
+                    <div>pH: <span id="currentPH">--</span></div>
+                    <div>EC: <span id="currentEC">--</span> μS/cm</div>
+                    <div>Protein: <span id="currentProtein">--</span>%</div>
+                    <div>Turbidity: <span id="currentTurbidity">--</span> NTU</div>
+                    <div>SCC: <span id="currentSCC">--</span> cells/ml</div>
+                    <div>ML Quality: <span id="currentQuality" class="status-value">--</span></div>
+                    <div>Action: <span id="currentAction" class="status-value">--</span></div>
+                </div>
+            </div>
+            
+            <!-- Charts -->
+            <div class="card grid-col-12">
+                <div class="card-header">pH Levels</div>
+                <div class="chart-container">
+                    <canvas id="phChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card grid-col-12">
+                <div class="card-header">Electrical Conductivity (EC)</div>
+                <div class="chart-container">
+                    <canvas id="ecChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card grid-col-12">
+                <div class="card-header">Protein Content</div>
+                <div class="chart-container">
+                    <canvas id="proteinChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card grid-col-12">
+                <div class="card-header">Turbidity</div>
+                <div class="chart-container">
+                    <canvas id="turbidityChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card grid-col-12">
+                <div class="card-header">Somatic Cell Count (SCC)</div>
+                <div class="chart-container">
+                    <canvas id="sccChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Data Table -->
+            <div class="card grid-col-12">
+                <div class="card-header">Recent Measurements</div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>pH</th>
+                            <th>EC (μS/cm)</th>
+                            <th>Protein (%)</th>
+                            <th>Turbidity (NTU)</th>
+                            <th>SCC (cells/ml)</th>
+                            <th>Results</th>
+                            <th>ML Quality</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add milk quality evaluation function
+        function evaluateMilkQuality(data) {
+            // Prefer ML result if available
+            if (data.milk_quality) {
+                let statusClass = 'status-good';
+                if (data.milk_quality === 'Negative') statusClass = 'status-good';
+                else if (data.milk_quality === 'Trace') statusClass = 'status-warning';
+                else statusClass = 'status-bad';
+                return `<span class="${statusClass}">${data.milk_quality.replace('_', ' ')}</span>`;
+            }
+            // Fallback to SCC-based evaluation
+            if (data.scc < 200000) {
+                return '<span class="status-good">Normal, no infection</span>';
+            } else if (data.scc <= 400000) {
+                return '<span class="status-warning">Slight risk</span>';
+            } else if (data.scc <= 1200000) {
+                return '<span class="status-bad">Mild infection</span>';
+            } else if (data.scc <= 5000000) {
+                return '<span class="status-bad">Moderate infection</span>';
+            } else {
+                return '<span class="status-bad">Severe mastitis</span>';
+            }
+        }
+
+        // Initialize charts
+        const charts = {};
+        const chartConfigs = {
+            'ph': { unit: '', min: 6, max: 7.5, color: 'rgba(67, 97, 238, 0.8)' },
+            'ec': { unit: 'μS/cm', min: 500, max: 2000, color: 'rgba(63, 55, 201, 0.8)' },
+            'protein': { unit: '%', min: 2.5, max: 4, color: 'rgba(248, 150, 30, 0.8)' },
+            'turbidity': { unit: 'NTU', min: 0, max: 30, color: 'rgba(153, 102, 255, 0.8)' },
+            'scc': { unit: 'cells/ml', min: 0, max: 1500000, color: 'rgba(247, 37, 133, 0.8)' }
+        };
+
+        Object.keys(chartConfigs).forEach(sensor => {
+            const ctx = document.getElementById(`${sensor}Chart`).getContext('2d');
+            charts[sensor] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: sensor.toUpperCase(),
+                        data: [],
+                        borderColor: chartConfigs[sensor].color,
+                        backgroundColor: chartConfigs[sensor].color.replace('0.8', '0.1'),
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: chartConfigs[sensor].min,
+                            max: chartConfigs[sensor].max,
+                            title: {
+                                display: true,
+                                text: chartConfigs[sensor].unit
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+        });
+
+        // WebSocket connection
+        const socket = io();
+        const maxDataPoints = 15;
+        const dataHistory = {
+            timestamps: [],
+            ph: [],
+            ec: [],
+            protein: [],
+            turbidity: [],
+            scc: []
+        };
+
+        socket.on('connect', () => {
+            console.log('Connected to WebSocket server');
+            document.getElementById('lastUpdated').textContent = `Connected: ${new Date().toLocaleTimeString()}`;
+        });
+
+        socket.on('sensor_update', (data) => {
+            // Update last updated time
+            document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+            
+            // Show/hide demo badge
+            document.getElementById('demoBadge').style.display = data.is_demo ? 'block' : 'none';
+            
+            // Update current values display
+            document.getElementById('currentPH').textContent = data.ph.toFixed(2);
+            document.getElementById('currentEC').textContent = data.ec;
+            document.getElementById('currentProtein').textContent = data.protein.toFixed(2);
+            document.getElementById('currentTurbidity').textContent = data.turbidity;
+            document.getElementById('currentSCC').textContent = data.scc.toLocaleString();
+            document.getElementById('currentQuality').textContent = data.milk_quality ? data.milk_quality.replace('_', ' ') : '--';
+            document.getElementById('currentQuality').className = 'status-value ' + (data.milk_quality === 'Negative' ? 'status-good' : (data.milk_quality === 'Trace' ? 'status-warning' : 'status-bad'));
+            document.getElementById('currentAction').textContent = data.action_needed || '--';
+            document.getElementById('currentAction').className = 'status-value ' + (data.action_needed === 'Safe to use' ? 'status-good' : (data.action_needed === 'Monitor' ? 'status-warning' : 'status-bad'));
+            
+            // Update data history
+            dataHistory.timestamps.push(data.timestamp.split(' ')[1]);
+            dataHistory.ph.push(data.ph);
+            dataHistory.ec.push(data.ec);
+            dataHistory.protein.push(data.protein);
+            dataHistory.turbidity.push(data.turbidity);
+            dataHistory.scc.push(data.scc);
+            
+            // Limit data points
+            if (dataHistory.timestamps.length > maxDataPoints) {
+                dataHistory.timestamps.shift();
+                dataHistory.ph.shift();
+                dataHistory.ec.shift();
+                dataHistory.protein.shift();
+                dataHistory.turbidity.shift();
+                dataHistory.scc.shift();
+            }
+            
+            // Update charts
+            Object.keys(charts).forEach(sensor => {
+                charts[sensor].data.labels = dataHistory.timestamps;
+                charts[sensor].data.datasets[0].data = dataHistory[sensor];
+                charts[sensor].update();
+            });
+            
+            // Update table
+            updateDataTable(data);
+        });
+
+        function updateDataTable(data) {
+            const tableBody = document.getElementById('dataBody');
+            const newRow = document.createElement('tr');
+            
+            newRow.innerHTML = `
+                <td>${data.timestamp ? data.timestamp.split(' ')[1] : '--'}</td>
+                <td>${data.ph !== undefined ? data.ph.toFixed(2) : '--'}</td>
+                <td>${data.ec !== undefined ? data.ec : '--'}</td>
+                <td>${data.protein !== undefined ? data.protein.toFixed(2) : '--'}</td>
+                <td>${data.turbidity !== undefined ? data.turbidity : '--'}</td>
+                <td>${data.scc !== undefined ? data.scc.toLocaleString() : '--'}</td>
+                <td>${evaluateMilkQuality(data)}</td>
+                <td><span class="status-value ${(data.milk_quality === 'Negative') ? 'status-good' : (data.milk_quality === 'Trace' ? 'status-warning' : 'status-bad')}">${data.milk_quality ? data.milk_quality.replace('_', ' ') : '--'}</span></td>
+                <td><span class="status-value ${(data.action_needed === 'Safe to use') ? 'status-good' : (data.action_needed === 'Monitor' ? 'status-warning' : 'status-bad')}">${data.action_needed || '--'}</span></td>
+            `;
+            
+            tableBody.insertBefore(newRow, tableBody.firstChild);
+            
+            // Limit table rows
+            if (tableBody.children.length > maxDataPoints) {
+                tableBody.removeChild(tableBody.lastChild);
+            }
+        }
+    </script>
+</body>
+</html>

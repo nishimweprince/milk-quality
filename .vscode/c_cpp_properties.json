@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "\"includePath\": [",
+                "    \"${workspaceFolder}/**\",",
+                "    \"C:/Program Files/Arduino IDE/resources/app/node_modules/arduino-ide-extension/build/libraries/**\",",
+                "    \"C:/Program Files/Arduino IDE/hardware/arduino/avr/libraries/**\"",
+                "]"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
+        }
+    ],
+    "version": 4
+}
