@@ -10,6 +10,7 @@ import random
 import glob
 import json
 import pandas as pd
+import os
 from ml_processor import ml_processor
 
 app = Flask(__name__)
@@ -30,11 +31,20 @@ latest_readings = {
 
 # Database connection
 def get_db_connection():
+    # Use environment variables for secure credential management
+    import os
+    
+    # Default values for development/demo
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_user = os.environ.get('DB_USER', 'root')
+    db_pass = os.environ.get('DB_PASS', '')  # Password should be set via environment variable
+    db_name = os.environ.get('DB_NAME', 'milkqualitydb')
+    
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="Companyyacu@00",
-        database="milkqualitydb"
+        host=db_host,
+        user=db_user,
+        password=db_pass,
+        database=db_name
     )
 
 db_connection = get_db_connection()
@@ -42,12 +52,12 @@ db_connection = get_db_connection()
 def save_to_csv(data):
     """Save readings to CSV as backup"""
     df = pd.DataFrame([data])
-    df.to_csv('milk_readings.csv', mode='a', header=not pd.io.common.file_exists('milk_readings.csv'), index=False)
+    df.to_csv('milk_readings.csv', mode='a', header=not os.path.exists('milk_readings.csv'), index=False)
     print(f"Data saved to CSV: {data}")
 
 class ArduinoReader:
-    def __init__(self, port='/dev/cu.usbmodem11101', baudrate=9600):
-        self.port = port
+    def __init__(self, port=None, baudrate=9600):
+        self.port = port  # Default to None, will be detected in connect()
         self.baudrate = baudrate
         self.serial_conn = None
         self.running = False
@@ -56,12 +66,23 @@ class ArduinoReader:
         self.connect()
 
     def connect(self, retries=5, delay=2):
-        # Try to find Arduino ports on macOS
-        arduino_ports = glob.glob('/dev/cu.usbmodem*') + glob.glob('/dev/tty.usbmodem*')
+        # Try to find Arduino ports on different operating systems
+        # Windows - COM ports
+        windows_ports = glob.glob('COM*')
+        # macOS - USB ports
+        mac_ports = glob.glob('/dev/cu.usbmodem*') + glob.glob('/dev/tty.usbmodem*')
         
-        if arduino_ports:
+        arduino_ports = windows_ports + mac_ports
+        
+        # Prioritize COM3 if available for Windows
+        if 'COM3' in arduino_ports:
+            self.port = 'COM3'
+            print(f"Found Arduino on preferred port: {self.port}")
+        elif arduino_ports:
             self.port = arduino_ports[0]  # Use the first Arduino found
             print(f"Found Arduino port: {self.port}")
+        
+        if arduino_ports:
             try:
                 self.serial_conn = serial.Serial(
                     port=self.port,
@@ -285,4 +306,4 @@ def cleanup():
 atexit.register(cleanup)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True, use_reloader=False, log_output=True)

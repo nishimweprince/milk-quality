@@ -47,10 +47,12 @@ class MilkQualityML:
         self.label_encoder = LabelEncoder()
         y_encoded = self.label_encoder.fit_transform(y)
         
-        # Train Random Forest model (best performing model from analysis)
-        from sklearn.ensemble import RandomForestClassifier
-        self.model = RandomForestClassifier(n_estimators=100, random_state=42)
-        self.model.fit(X_scaled, y_encoded)
+        from sklearn.model_selection import train_test_split
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_scaled, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+        )
+        
+        self.train_and_evaluate_models(X_train, X_test, y_train, y_test)
         
         # Save models
         self.save_models()
@@ -59,16 +61,16 @@ class MilkQualityML:
         """Generate synthetic training data based on sensor parameters and save to CSV"""
         np.random.seed(42)
         
-        # Generate features
-        ph_values = np.random.uniform(6.0, 7.5, n_samples)
-        turbidity = np.random.uniform(0.5, 10.0, n_samples)
-        ec_values = np.random.uniform(4.0, 6.0, n_samples)
-        protein_content = np.random.uniform(1.8, 3.8, n_samples)
+        # Generate features with wider ranges to ensure all quality categories
+        ph_values = np.random.uniform(5.5, 7.5, n_samples)  # Expanded pH range
+        turbidity = np.random.uniform(0.5, 30.0, n_samples)  # Expanded turbidity range
+        ec_values = np.random.uniform(3.5, 7.0, n_samples)   # Expanded EC range
+        protein_content = np.random.uniform(1.5, 4.0, n_samples)  # Expanded protein range
         
-        # SCC generation with some added variability
+        # SCC generation with increased variability to ensure all categories
         w1, w2, C = 1.2, 2.0, 1000
         scc_values = (w1 * ec_values) + (w2 * turbidity) + C
-        scc_values += np.random.normal(0, 500000, n_samples)  # larger noise
+        scc_values += np.random.normal(0, 1000000, n_samples)  # larger noise for more variability
         scc_values = np.clip(np.abs(scc_values), 1000, 10_000_000)  # clip to realistic limits
         
         # Define quality and action mapping
@@ -125,6 +127,45 @@ class MilkQualityML:
         self.model = joblib.load(self.model_path)
         self.scaler = joblib.load(self.scaler_path)
         self.label_encoder = joblib.load(self.label_encoder_path)
+        
+    def train_and_evaluate_models(self, X_train, X_test, y_train, y_test):
+        """Train and evaluate multiple machine learning models"""
+        from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.svm import SVC
+        from sklearn.metrics import accuracy_score, classification_report
+        
+        models = {
+            'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
+            'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, random_state=42),
+            'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
+            'SVM': SVC(kernel='rbf', probability=True, random_state=42)
+        }
+        
+        best_accuracy = 0
+        best_model_name = None
+        
+        print("\nModel Evaluation Results:")
+        print("-" * 40)
+        
+        for name, model in models.items():
+            model.fit(X_train, y_train)
+            
+            y_pred = model.predict(X_test)
+            accuracy = accuracy_score(y_test, y_pred)
+            
+            print(f"\n{name} Accuracy: {accuracy:.4f}")
+            print(classification_report(y_test, y_pred, 
+                                      target_names=self.label_encoder.classes_,
+                                      zero_division=0))
+            
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_model_name = name
+                self.model = model
+        
+        print(f"\nBest Model: {best_model_name} (Accuracy: {best_accuracy:.4f})")
+        print("-" * 40)
 
     def predict_quality(self, sensor_data):
         """
@@ -169,4 +210,4 @@ class MilkQualityML:
         }
 
 # Create a singleton instance
-ml_processor = MilkQualityML() 
+ml_processor = MilkQualityML()      
