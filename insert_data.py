@@ -12,6 +12,7 @@ import json
 import pandas as pd
 import os
 from ml_processor import ml_processor
+import psycopg2
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'milkquality'
@@ -30,17 +31,17 @@ latest_readings = {
 
 def get_db_connection():
     import os
-    
     db_host = os.environ.get('DB_HOST', 'localhost')
-    db_user = os.environ.get('DB_USER', 'root')
-    db_pass = os.environ.get('DB_PASS', '')  # Password should be set via environment variable
-    db_name = os.environ.get('DB_NAME', 'milkqualitydb')
-    
-    return mysql.connector.connect(
+    db_user = os.environ.get('DB_USER', 'postgres')
+    db_pass = os.environ.get('DB_PASS', 'nishimwe')  # Password should be set via environment variable
+    db_name = os.environ.get('DB_NAME', 'milkquality')
+    db_port = os.environ.get('DB_PORT', '5433')
+    return psycopg2.connect(
         host=db_host,
         user=db_user,
         password=db_pass,
-        database=db_name
+        dbname=db_name,
+        port=db_port
     )
 
 db_connection = get_db_connection()
@@ -233,8 +234,10 @@ def save_to_db(data):
             data.get('milk_quality', 'Unknown'),
             data.get('action_needed', 'Unknown')
         ))
-        sample_id = cursor.lastrowid
-        
+        sample_id = cursor.fetchone()[0] if cursor.description else None
+        if sample_id is None:
+            cursor.execute('SELECT currval(pg_get_serial_sequence(\'milk_sample\', \'sample_id\'))')
+            sample_id = cursor.fetchone()[0]
         cursor.execute("INSERT INTO ph_sensor (sample_id, ph_value) VALUES (%s, %s)", 
                       (sample_id, data['ph']))
         cursor.execute("INSERT INTO ec_sensor (sample_id, ec_value) VALUES (%s, %s)", 
@@ -245,7 +248,6 @@ def save_to_db(data):
                       (sample_id, data['turbidity']))
         cursor.execute("INSERT INTO scc_sensor (sample_id, scc_value) VALUES (%s, %s)", 
                       (sample_id, data['scc']))
-        
         db_connection.commit()
     except Exception as e:
         print(f"Database error: {e}")

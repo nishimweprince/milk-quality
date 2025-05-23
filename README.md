@@ -1,5 +1,7 @@
 # Milk Quality Monitoring System
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/nishimweprince/milk-quality)
+
 An IoT platform for online milk quality analysis and monitoring using Arduino sensors and machine learning.
 
 ## Overview

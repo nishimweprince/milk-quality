@@ -9,4 +9,6 @@ joblib>=1.0.1
 python-engineio>=4.2.1
 python-socketio>=5.4.0
 matplotlib
-seaborn 
+seaborn
+psycopg2-binary
+psycopg2
