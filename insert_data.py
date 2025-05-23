@@ -10,13 +10,13 @@ import random
 import glob
 import json
 import pandas as pd
+import os
 from ml_processor import ml_processor
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'milkquality'
 socketio = SocketIO(app, async_mode='threading')
 
-# Global variables to store latest readings
 latest_readings = {
     'ph': 0,
     'turbidity': 0,
@@ -28,13 +28,19 @@ latest_readings = {
     'timestamp': ''
 }
 
-# Database connection
 def get_db_connection():
+    import os
+    
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_user = os.environ.get('DB_USER', 'root')
+    db_pass = os.environ.get('DB_PASS', '')  # Password should be set via environment variable
+    db_name = os.environ.get('DB_NAME', 'milkqualitydb')
+    
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="Companyyacu@00",
-        database="milkqualitydb"
+        host=db_host,
+        user=db_user,
+        password=db_pass,
+        database=db_name
     )
 
 db_connection = get_db_connection()
@@ -42,12 +48,12 @@ db_connection = get_db_connection()
 def save_to_csv(data):
     """Save readings to CSV as backup"""
     df = pd.DataFrame([data])
-    df.to_csv('milk_readings.csv', mode='a', header=not pd.io.common.file_exists('milk_readings.csv'), index=False)
+    df.to_csv('milk_readings.csv', mode='a', header=not os.path.exists('milk_readings.csv'), index=False)
     print(f"Data saved to CSV: {data}")
 
 class ArduinoReader:
-    def __init__(self, port='/dev/cu.usbmodem11101', baudrate=9600):
-        self.port = port
+    def __init__(self, port=None, baudrate=9600):
+        self.port = port  # Default to None, will be detected in connect()
         self.baudrate = baudrate
         self.serial_conn = None
         self.running = False
@@ -56,12 +62,19 @@ class ArduinoReader:
         self.connect()
 
     def connect(self, retries=5, delay=2):
-        # Try to find Arduino ports on macOS
-        arduino_ports = glob.glob('/dev/cu.usbmodem*') + glob.glob('/dev/tty.usbmodem*')
+        windows_ports = glob.glob('COM*')
+        mac_ports = glob.glob('/dev/cu.usbmodem*') + glob.glob('/dev/tty.usbmodem*')
         
-        if arduino_ports:
+        arduino_ports = windows_ports + mac_ports
+        
+        if 'COM3' in arduino_ports:
+            self.port = 'COM3'
+            print(f"Found Arduino on preferred port: {self.port}")
+        elif arduino_ports:
             self.port = arduino_ports[0]  # Use the first Arduino found
             print(f"Found Arduino port: {self.port}")
+        
+        if arduino_ports:
             try:
                 self.serial_conn = serial.Serial(
                     port=self.port,
@@ -79,35 +92,56 @@ class ArduinoReader:
         return False
 
     def generate_demo_data(self):
-        """Generate demo data for all possible milk quality cases."""
+        """Generate demo data with more realistic variations across quality categories."""
         scenario = random.choices(
-            ['safe', 'monitor', 'not_safe'],
-            weights=[0.5, 0.3, 0.2],  # Adjust weights as desired
+            ['safe', 'monitor', 'mild_concern', 'serious_concern', 'critical'],
+            weights=[0.35, 0.25, 0.2, 0.15, 0.05],  # Adjusted weights for realistic distribution
             k=1
         )[0]
-
+        
+        ph_base = 0
+        ec_base = 0
+        protein_base = 0
+        turbidity_base = 0
+        scc_base = 0
+        
         if scenario == 'safe':
-            # Negative: all values in normal range
-            scc = random.randint(50000, 180000)
-            ph = round(random.uniform(6.6, 6.9), 2)
-            ec = random.randint(450, 550)
-            protein = round(random.uniform(3.2, 3.5), 2)
-            turbidity = random.randint(1, 3)
+            ph_base = 6.7
+            ec_base = 500
+            protein_base = 3.3
+            turbidity_base = 2
+            scc_base = 120000
         elif scenario == 'monitor':
-            # Trace or Weak +: slightly elevated SCC or other mild abnormality
-            scc = random.randint(200001, 1200000)
-            ph = round(random.uniform(6.2, 6.5), 2)
-            ec = random.randint(550, 700)
-            protein = round(random.uniform(3.0, 3.3), 2)
-            turbidity = random.randint(3, 8)
-        else:
-            # Not safe: Distinct + or Definite +, high SCC or other severe abnormality
-            scc = random.randint(1200001, 6000000)
-            ph = round(random.uniform(5.5, 6.1), 2)
-            ec = random.randint(700, 1200)
-            protein = round(random.uniform(2.5, 3.0), 2)
-            turbidity = random.randint(8, 30)
-
+            ph_base = 6.4
+            ec_base = 600
+            protein_base = 3.1
+            turbidity_base = 5
+            scc_base = 300000
+        elif scenario == 'mild_concern':
+            ph_base = 6.1
+            ec_base = 700
+            protein_base = 2.9
+            turbidity_base = 9
+            scc_base = 800000
+        elif scenario == 'serious_concern':
+            ph_base = 5.8
+            ec_base = 900
+            protein_base = 2.7
+            turbidity_base = 15
+            scc_base = 3000000
+        else:  # critical
+            ph_base = 5.5
+            ec_base = 1100
+            protein_base = 2.4
+            turbidity_base = 25
+            scc_base = 7000000
+        
+        ph = round(random.uniform(ph_base - 0.3, ph_base + 0.3), 2)
+        ec = int(random.uniform(ec_base * 0.8, ec_base * 1.2))
+        protein = round(random.uniform(protein_base * 0.9, protein_base * 1.1), 2)
+        turbidity = int(random.uniform(turbidity_base * 0.7, turbidity_base * 1.3))
+        scc = int(random.uniform(scc_base * 0.6, scc_base * 1.4))  # Larger variation for SCC
+        
         data = {
             'ph': ph,
             'ec': ec,
@@ -127,16 +161,13 @@ class ArduinoReader:
             if not self.serial_conn or not self.serial_conn.is_open:
                 return None
             try:
-                # Read and print raw data for debugging
                 line = self.serial_conn.readline().decode('utf-8').strip()
                 print(f"Raw data received: '{line}'")
                 
-                # Skip empty lines and debug messages
                 if not line or 'DEBUG:' in line or '---' in line:
                     print("Skipping debug or empty line")
                     return None
                     
-                # Only process lines that look like CSV data
                 if ',' in line:
                     print(f"Processing CSV data: {line}")
                     try:
@@ -171,23 +202,17 @@ class ArduinoReader:
             while self.running:
                 real_data = self.read_data()
                 if real_data:
-                    # Get ML prediction
                     ml_prediction = ml_processor.predict_quality(real_data)
                     
-                    # Combine sensor data with ML prediction
                     combined_data = {**real_data, **ml_prediction}
                     
-                    # Update latest readings
                     global latest_readings
                     latest_readings = combined_data
                     
-                    # Save to database
                     save_to_db(combined_data)
                     
-                    # Save to CSV as backup
                     save_to_csv(combined_data)
                     
-                    # Emit to websocket
                     socketio.emit('sensor_update', combined_data)
                 time.sleep(5)  # Wait for 5 seconds before next reading
         threading.Thread(target=read_loop, daemon=True).start()
@@ -200,7 +225,6 @@ class ArduinoReader:
 def save_to_db(data):
     cursor = db_connection.cursor()
     try:
-        # Insert into milk_sample table
         cursor.execute("""
             INSERT INTO milk_sample (sample_time, milk_quality, action_needed) 
             VALUES (%s, %s, %s)
@@ -211,7 +235,6 @@ def save_to_db(data):
         ))
         sample_id = cursor.lastrowid
         
-        # Insert sensor readings
         cursor.execute("INSERT INTO ph_sensor (sample_id, ph_value) VALUES (%s, %s)", 
                       (sample_id, data['ph']))
         cursor.execute("INSERT INTO ec_sensor (sample_id, ec_value) VALUES (%s, %s)", 
@@ -232,12 +255,10 @@ def save_to_db(data):
 
 arduino_reader = ArduinoReader()
 
-# Web routes
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# API endpoints
 @app.route('/api/latest', methods=['GET'])
 def get_latest():
     """API endpoint to get latest readings"""
@@ -267,7 +288,6 @@ def get_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# WebSocket events
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
@@ -285,4 +305,4 @@ def cleanup():
 atexit.register(cleanup)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True, use_reloader=False, log_output=True)
