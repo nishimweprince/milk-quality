@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Milk Quality Monitoring</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.0.2/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
         :root {
@@ -214,51 +215,156 @@
     </div>
 
     <script>
-        // Add milk quality evaluation function
+        // Add milk quality evaluation function with more descriptive labels
         function evaluateMilkQuality(data) {
             // Prefer ML result if available
             if (data.milk_quality) {
                 let statusClass = 'status-good';
-                if (data.milk_quality === 'Negative') statusClass = 'status-good';
-                else if (data.milk_quality === 'Trace') statusClass = 'status-warning';
-                else statusClass = 'status-bad';
-                return `<span class="${statusClass}">${data.milk_quality.replace('_', ' ')}</span>`;
+                let qualityLabel = '';
+                
+                if (data.milk_quality === 'Negative') {
+                    statusClass = 'status-good';
+                    qualityLabel = 'Healthy';
+                } else if (data.milk_quality === 'Trace') {
+                    statusClass = 'status-warning';
+                    qualityLabel = 'Monitor (Minor Issue)';
+                } else if (data.milk_quality === 'Weak_Positive') {
+                    statusClass = 'status-warning';
+                    qualityLabel = 'Concerning (Check Cow)';
+                } else if (data.milk_quality === 'Distinct_Positive') {
+                    statusClass = 'status-bad';
+                    qualityLabel = 'Problematic (Needs Treatment)';
+                } else if (data.milk_quality === 'Definite_Positive') {
+                    statusClass = 'status-bad';
+                    qualityLabel = 'Critical (Reject Milk)';
+                }
+                
+                return `<span class="${statusClass}">${qualityLabel}</span>`;
             }
-            // Fallback to SCC-based evaluation
+            
+            // Fallback to SCC-based evaluation with more descriptive labels
             if (data.scc < 200000) {
-                return '<span class="status-good">Normal, no infection</span>';
+                return '<span class="status-good">Healthy (No Infection)</span>';
             } else if (data.scc <= 400000) {
-                return '<span class="status-warning">Slight risk</span>';
+                return '<span class="status-warning">Monitor (Minor Issue)</span>';
             } else if (data.scc <= 1200000) {
-                return '<span class="status-bad">Mild infection</span>';
+                return '<span class="status-bad">Concerning (Check Cow)</span>';
             } else if (data.scc <= 5000000) {
-                return '<span class="status-bad">Moderate infection</span>';
+                return '<span class="status-bad">Problematic (Needs Treatment)</span>';
             } else {
-                return '<span class="status-bad">Severe mastitis</span>';
+                return '<span class="status-bad">Critical (Reject Milk)</span>';
             }
         }
 
-        // Initialize charts
+        // Initialize charts with improved colors and more intuitive configuration
         const charts = {};
         const chartConfigs = {
-            'ph': { unit: '', min: 6, max: 7.5, color: 'rgba(67, 97, 238, 0.8)' },
-            'ec': { unit: 'μS/cm', min: 500, max: 2000, color: 'rgba(63, 55, 201, 0.8)' },
-            'protein': { unit: '%', min: 2.5, max: 4, color: 'rgba(248, 150, 30, 0.8)' },
-            'turbidity': { unit: 'NTU', min: 0, max: 30, color: 'rgba(153, 102, 255, 0.8)' },
-            'scc': { unit: 'cells/ml', min: 0, max: 1500000, color: 'rgba(247, 37, 133, 0.8)' }
+            'ph': { 
+                unit: 'pH', 
+                min: 5.5, 
+                max: 7.5, 
+                color: 'rgba(53, 162, 235, 0.8)',
+                thresholds: [
+                    { value: 6.0, color: 'rgba(255, 99, 132, 0.3)', label: 'Too Acidic' },
+                    { value: 6.6, color: 'rgba(75, 192, 192, 0.3)', label: 'Optimal' },
+                    { value: 6.9, color: 'rgba(255, 205, 86, 0.3)', label: 'Caution' }
+                ]
+            },
+            'ec': { 
+                unit: 'μS/cm', 
+                min: 400, 
+                max: 1200, 
+                color: 'rgba(75, 192, 192, 0.8)',
+                thresholds: [
+                    { value: 550, color: 'rgba(75, 192, 192, 0.3)', label: 'Normal' },
+                    { value: 700, color: 'rgba(255, 205, 86, 0.3)', label: 'Elevated' }
+                ]
+            },
+            'protein': { 
+                unit: '%', 
+                min: 1.5, 
+                max: 4.0, 
+                color: 'rgba(255, 159, 64, 0.8)',
+                thresholds: [
+                    { value: 2.8, color: 'rgba(255, 99, 132, 0.3)', label: 'Low' },
+                    { value: 3.2, color: 'rgba(75, 192, 192, 0.3)', label: 'Normal' }
+                ]
+            },
+            'turbidity': { 
+                unit: 'NTU', 
+                min: 0, 
+                max: 30, 
+                color: 'rgba(153, 102, 255, 0.8)',
+                thresholds: [
+                    { value: 3, color: 'rgba(75, 192, 192, 0.3)', label: 'Clear' },
+                    { value: 8, color: 'rgba(255, 205, 86, 0.3)', label: 'Cloudy' },
+                    { value: 15, color: 'rgba(255, 99, 132, 0.3)', label: 'Very Cloudy' }
+                ]
+            },
+            'scc': { 
+                unit: 'cells/ml', 
+                min: 0, 
+                max: 6000000, 
+                color: 'rgba(255, 99, 132, 0.8)',
+                thresholds: [
+                    { value: 200000, color: 'rgba(75, 192, 192, 0.3)', label: 'Healthy' },
+                    { value: 400000, color: 'rgba(255, 205, 86, 0.3)', label: 'Monitor' },
+                    { value: 1200000, color: 'rgba(255, 159, 64, 0.3)', label: 'Concerning' },
+                    { value: 5000000, color: 'rgba(255, 99, 132, 0.3)', label: 'Critical' }
+                ]
+            }
         };
 
         Object.keys(chartConfigs).forEach(sensor => {
             const ctx = document.getElementById(`${sensor}Chart`).getContext('2d');
+            const config = chartConfigs[sensor];
+            
+            // Create chart annotations for thresholds if supported
+            const annotations = {};
+            if (config.thresholds) {
+                config.thresholds.forEach((threshold, index) => {
+                    annotations[`threshold${index}`] = {
+                        type: 'box',
+                        xMin: 0,
+                        xMax: 100,
+                        yMin: index > 0 ? config.thresholds[index-1].value : config.min,
+                        yMax: threshold.value,
+                        backgroundColor: threshold.color,
+                        borderWidth: 0,
+                        label: {
+                            display: true,
+                            content: threshold.label,
+                            position: 'start',
+                            color: 'rgba(0, 0, 0, 0.7)',
+                            font: {
+                                size: 10
+                            }
+                        }
+                    };
+                });
+                
+                // Add one more annotation for the top range
+                const lastThreshold = config.thresholds[config.thresholds.length - 1];
+                annotations['thresholdTop'] = {
+                    type: 'box',
+                    xMin: 0,
+                    xMax: 100,
+                    yMin: lastThreshold.value,
+                    yMax: config.max,
+                    backgroundColor: lastThreshold.color,
+                    borderWidth: 0
+                };
+            }
+            
             charts[sensor] = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: [],
                     datasets: [{
-                        label: sensor.toUpperCase(),
+                        label: sensor === 'ph' ? 'pH' : sensor.toUpperCase(),
                         data: [],
-                        borderColor: chartConfigs[sensor].color,
-                        backgroundColor: chartConfigs[sensor].color.replace('0.8', '0.1'),
+                        borderColor: config.color,
+                        backgroundColor: config.color.replace('0.8', '0.1'),
                         borderWidth: 2,
                         pointRadius: 4,
                         pointHoverRadius: 6,
@@ -271,16 +377,49 @@
                     maintainAspectRatio: false,
                     scales: {
                         y: {
-                            min: chartConfigs[sensor].min,
-                            max: chartConfigs[sensor].max,
+                            min: config.min,
+                            max: config.max,
                             title: {
                                 display: true,
-                                text: chartConfigs[sensor].unit
+                                text: config.unit,
+                                font: {
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
                             }
                         },
                         x: {
                             grid: {
                                 display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        annotation: {
+                            annotations: annotations
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.parsed.y;
+                                    
+                                    // Add interpretation to the tooltip
+                                    if (sensor === 'scc') {
+                                        if (context.parsed.y < 200000) label += ' (Healthy)';
+                                        else if (context.parsed.y < 400000) label += ' (Monitor)';
+                                        else if (context.parsed.y < 1200000) label += ' (Concerning)';
+                                        else if (context.parsed.y < 5000000) label += ' (Needs attention)';
+                                        else label += ' (Critical)';
+                                    }
+                                    
+                                    return label;
+                                }
                             }
                         }
                     },
@@ -322,7 +461,17 @@
             document.getElementById('currentProtein').textContent = data.protein.toFixed(2);
             document.getElementById('currentTurbidity').textContent = data.turbidity;
             document.getElementById('currentSCC').textContent = data.scc.toLocaleString();
-            document.getElementById('currentQuality').textContent = data.milk_quality ? data.milk_quality.replace('_', ' ') : '--';
+            
+            // Update quality display with more user-friendly labels
+            let qualityLabel = '';
+            if (data.milk_quality === 'Negative') qualityLabel = 'Healthy';
+            else if (data.milk_quality === 'Trace') qualityLabel = 'Monitor (Minor Issue)';
+            else if (data.milk_quality === 'Weak_Positive') qualityLabel = 'Concerning (Check Cow)';
+            else if (data.milk_quality === 'Distinct_Positive') qualityLabel = 'Problematic (Needs Treatment)';
+            else if (data.milk_quality === 'Definite_Positive') qualityLabel = 'Critical (Reject Milk)';
+            else qualityLabel = data.milk_quality ? data.milk_quality.replace('_', ' ') : '--';
+            
+            document.getElementById('currentQuality').textContent = qualityLabel;
             document.getElementById('currentQuality').className = 'status-value ' + (data.milk_quality === 'Negative' ? 'status-good' : (data.milk_quality === 'Trace' ? 'status-warning' : 'status-bad'));
             document.getElementById('currentAction').textContent = data.action_needed || '--';
             document.getElementById('currentAction').className = 'status-value ' + (data.action_needed === 'Safe to use' ? 'status-good' : (data.action_needed === 'Monitor' ? 'status-warning' : 'status-bad'));
@@ -360,6 +509,15 @@
             const tableBody = document.getElementById('dataBody');
             const newRow = document.createElement('tr');
             
+            // Get user-friendly quality label
+            let qualityLabel = '';
+            if (data.milk_quality === 'Negative') qualityLabel = 'Healthy';
+            else if (data.milk_quality === 'Trace') qualityLabel = 'Monitor (Minor Issue)';
+            else if (data.milk_quality === 'Weak_Positive') qualityLabel = 'Concerning (Check Cow)';
+            else if (data.milk_quality === 'Distinct_Positive') qualityLabel = 'Problematic (Needs Treatment)';
+            else if (data.milk_quality === 'Definite_Positive') qualityLabel = 'Critical (Reject Milk)';
+            else qualityLabel = data.milk_quality ? data.milk_quality.replace('_', ' ') : '--';
+            
             newRow.innerHTML = `
                 <td>${data.timestamp ? data.timestamp.split(' ')[1] : '--'}</td>
                 <td>${data.ph !== undefined ? data.ph.toFixed(2) : '--'}</td>
@@ -368,7 +526,7 @@
                 <td>${data.turbidity !== undefined ? data.turbidity : '--'}</td>
                 <td>${data.scc !== undefined ? data.scc.toLocaleString() : '--'}</td>
                 <td>${evaluateMilkQuality(data)}</td>
-                <td><span class="status-value ${(data.milk_quality === 'Negative') ? 'status-good' : (data.milk_quality === 'Trace' ? 'status-warning' : 'status-bad')}">${data.milk_quality ? data.milk_quality.replace('_', ' ') : '--'}</span></td>
+                <td><span class="status-value ${(data.milk_quality === 'Negative') ? 'status-good' : (data.milk_quality === 'Trace' ? 'status-warning' : 'status-bad')}">${qualityLabel}</span></td>
                 <td><span class="status-value ${(data.action_needed === 'Safe to use') ? 'status-good' : (data.action_needed === 'Monitor' ? 'status-warning' : 'status-bad')}">${data.action_needed || '--'}</span></td>
             `;
             

@@ -67,11 +67,24 @@ class MilkQualityML:
         ec_values = np.random.uniform(3.5, 7.0, n_samples)   # Expanded EC range
         protein_content = np.random.uniform(1.5, 4.0, n_samples)  # Expanded protein range
         
-        # SCC generation with increased variability to ensure all categories
-        w1, w2, C = 1.2, 2.0, 1000
-        scc_values = (w1 * ec_values) + (w2 * turbidity) + C
-        scc_values += np.random.normal(0, 1000000, n_samples)  # larger noise for more variability
-        scc_values = np.clip(np.abs(scc_values), 1000, 10_000_000)  # clip to realistic limits
+        # Generate SCC values independently - not as a function of other parameters
+        scc_distribution = np.random.choice(['low', 'medium', 'high', 'very_high', 'extreme'], 
+                                          size=n_samples, 
+                                          p=[0.4, 0.3, 0.15, 0.1, 0.05])  # Adjusted probabilities
+        
+        scc_values = np.zeros(n_samples)
+        # Create a mix of safe and unsafe milk with realistic SCC ranges
+        for i, dist in enumerate(scc_distribution):
+            if dist == 'low':
+                scc_values[i] = np.random.uniform(10000, 200000)
+            elif dist == 'medium':
+                scc_values[i] = np.random.uniform(200001, 400000)
+            elif dist == 'high':
+                scc_values[i] = np.random.uniform(400001, 1200000)
+            elif dist == 'very_high':
+                scc_values[i] = np.random.uniform(1200001, 5000000)
+            else:  # extreme
+                scc_values[i] = np.random.uniform(5000001, 10000000)
         
         # Define quality and action mapping
         action_mapping = {
@@ -210,4 +223,4 @@ class MilkQualityML:
         }
 
 # Create a singleton instance
-ml_processor = MilkQualityML()      
+ml_processor = MilkQualityML()        
